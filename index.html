@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glint &amp; Glare Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- Sun position calculations -->
+  <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js" defer></script>
+  <!-- Database client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="config.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">Glint &amp; Glare Report</span>
+      </div>
+      <p class="tagline">Measure reflected sunlight before it becomes someone else's problem.</p>
+    </div>
+  </header>
+
+  <!-- Signature element: horizon / elevation arc -->
+  <div class="horizon-band" aria-hidden="true">
+    <svg viewBox="0 0 1000 160" class="horizon-svg" preserveAspectRatio="none">
+      <line x1="0" y1="130" x2="1000" y2="130" class="horizon-line" />
+      <path d="M 120 130 A 300 300 0 0 1 420 20" class="elevation-arc" />
+      <circle cx="120" cy="130" r="4" class="arc-anchor" />
+      <circle cx="420" cy="20" r="6" class="sun-dot" />
+      <text x="150" y="90" class="arc-label">elevation θ</text>
+    </svg>
+  </div>
+
+  <main class="wrap main-grid">
+
+    <!-- INPUT PANEL -->
+    <section class="panel input-panel" aria-labelledby="input-heading">
+      <h2 id="input-heading" class="panel-heading">
+        <span class="panel-index">Site &amp; Geometry</span>
+      </h2>
+
+      <form id="glareForm" class="glare-form" autocomplete="off">
+
+        <fieldset class="field-group">
+          <legend>Location</legend>
+
+          <div class="field">
+            <label for="latitude">Latitude</label>
+            <input type="text" inputmode="decimal" id="latitude" name="latitude" placeholder="e.g. -26.2041" required>
+            <span class="field-suffix">°</span>
+          </div>
+
+          <div class="field">
+            <label for="longitude">Longitude</label>
+            <input type="text" inputmode="decimal" id="longitude" name="longitude" placeholder="e.g. 28.0473" required>
+            <span class="field-suffix">°</span>
+          </div>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend>Date &amp; Time</legend>
+
+          <div class="field">
+            <label for="reportDate">Date</label>
+            <input type="date" id="reportDate" name="reportDate" required>
+          </div>
+
+          <div class="field">
+            <label for="reportTime">Local time</label>
+            <input type="time" id="reportTime" name="reportTime" required>
+          </div>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend>Reflective Surface</legend>
+
+          <div class="field">
+            <label for="tilt">Tilt from horizontal</label>
+            <input type="text" inputmode="decimal" id="tilt" name="tilt" placeholder="e.g. 20" required>
+            <span class="field-suffix">°</span>
+          </div>
+
+          <div class="field">
+            <label for="azimuth">Surface azimuth</label>
+            <input type="text" inputmode="decimal" id="azimuth" name="azimuth" placeholder="e.g. 0 (north) / 180 (south)" required>
+            <span class="field-suffix">°</span>
+          </div>
+
+          <div class="field">
+            <label for="surfaceType">Surface type</label>
+            <select id="surfaceType" name="surfaceType">
+              <option value="pv-glass">PV module glass</option>
+              <option value="curtain-wall">Building curtain wall</option>
+              <option value="water">Water body</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend>Observer</legend>
+
+          <div class="field">
+            <label for="observerBearing">Bearing from surface to observer</label>
+            <input type="text" inputmode="decimal" id="observerBearing" name="observerBearing" placeholder="e.g. 180" required>
+            <span class="field-suffix">°</span>
+          </div>
+
+          <div class="field">
+            <label for="observerElevation">Observer elevation angle</label>
+            <input type="text" inputmode="decimal" id="observerElevation" name="observerElevation" placeholder="e.g. 0 (eye-level)" required>
+            <span class="field-suffix">°</span>
+          </div>
+        </fieldset>
+
+        <button type="submit" class="btn-primary">
+          Generate report
+        </button>
+        <button type="button" id="scanDayBtn" class="btn-secondary">
+          Scan full day for glare windows
+        </button>
+      </form>
+    </section>
+
+    <!-- RESULTS PANEL -->
+    <section class="panel results-panel" aria-labelledby="results-heading">
+      <h2 id="results-heading" class="panel-heading">
+        <span class="panel-index">Result</span>
+      </h2>
+
+      <div id="resultsEmpty" class="results-empty">
+        <svg viewBox="0 0 64 64" class="empty-icon" aria-hidden="true">
+          <circle cx="32" cy="32" r="12" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="32" y1="4" x2="32" y2="14" stroke="currentColor" stroke-width="2"/>
+          <line x1="32" y1="50" x2="32" y2="60" stroke="currentColor" stroke-width="2"/>
+          <line x1="4" y1="32" x2="14" y2="32" stroke="currentColor" stroke-width="2"/>
+          <line x1="50" y1="32" x2="60" y2="32" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <p>Enter site and surface geometry, then generate a report to see sun position and glare risk here.</p>
+      </div>
+
+      <div id="resultsContent" class="results-content" hidden>
+        <!-- Populated by script.js -->
+      </div>
+    </section>
+
+  </main>
+
+  <section class="wrap saved-section">
+    <h2 class="panel-heading"><span class="panel-index">Saved Reports</span></h2>
+    <p id="dbStatus" class="db-status">Checking database connection…</p>
+    <div id="savedReports" class="saved-list"></div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Built for site assessment. Not a substitute for a certified glare study where regulation requires one.</p>
+    </div>
+  </footer>
+
+  <script src="script.js" defer></script>
+</body>
+</html>
