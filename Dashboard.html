@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Reports — Glint &amp; Glare Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
+  <script src="config.js" defer></script>
+  <script src="auth.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <a href="index.html" style="text-decoration:none; display:flex; align-items:center; gap:10px;">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span class="brand-name">Glint &amp; Glare Report</span>
+        </a>
+      </div>
+      <nav class="auth-nav">
+        <a href="login.html" id="navLogin">Log in</a>
+        <a href="signup.html" id="navSignup">Sign up</a>
+        <a href="dashboard.html" id="navDashboard" hidden>My Reports</a>
+        <a href="admin.html" id="navAdmin" hidden>Admin</a>
+        <span id="navEmail" class="nav-email" hidden></span>
+        <button id="navLogout" class="nav-logout" hidden>Log out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel" style="margin: 32px 0;">
+      <h2 class="panel-heading"><span class="panel-index">My Reports</span></h2>
+      <p id="dashStatus" class="db-status">Loading your reports…</p>
+      <div id="reportList" class="saved-list"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Built for site assessment. Not a substitute for a certified glare study where regulation requires one.</p>
+    </div>
+  </footer>
+
+  <script>
+    let currentProfile = null;
+
+    async function loadMyReports() {
+      currentProfile = await requireLogin();
+      if (!currentProfile) return; // requireLogin already redirected
+
+      const status = document.getElementById('dashStatus');
+      const list = document.getElementById('reportList');
+
+      const { data, error } = await window.db
+        .from('reports')
+        .select('*')
+        .eq('user_id', currentProfile.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        status.textContent = `Couldn't load your reports: ${error.message}`;
+        return;
+      }
+
+      if (!data.length) {
+        status.textContent = 'You haven\u2019t generated any reports yet. Head to the calculator to create one.';
+        return;
+      }
+
+      status.textContent = `You have ${data.length} saved report${data.length === 1 ? '' : 's'}.`;
+
+      list.innerHTML = data
+        .map((r) => {
+          const stamp = r.verified
+            ? `<span class="saved-item-severity" style="color:#4FA8E0;">Official ✓</span>`
+            : `<span class="saved-item-severity" style="color:#7C8699;">Preliminary</span>`;
+          return `
+            <div class="saved-item" style="flex-wrap: wrap;">
+              <span class="saved-item-loc">${Number(r.latitude).toFixed(3)}, ${Number(r.longitude).toFixed(3)}</span>
+              <span class="saved-item-date">${r.report_date} ${r.report_time}</span>
+              <span class="saved-item-severity severity-${(r.severity || 'none').toLowerCase()}">${r.severity || 'None'}</span>
+              ${stamp}
+              <button class="btn-secondary" style="width:auto; margin:0; padding:8px 14px;" onclick="downloadReportPDF('${r.id}')">Download PDF</button>
+            </div>`;
+        })
+        .join('');
+
+      // Cache reports for PDF generation without a second fetch.
+      window._myReports = data;
+    }
+
+    function downloadReportPDF(reportId) {
+      const r = (window._myReports || []).find((x) => x.id === reportId);
+      if (!r) return;
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('Glint & Glare Report', 14, 20);
+
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.text(r.verified ? 'Status: OFFICIAL — Verified by admin' : 'Status: PRELIMINARY — Not yet verified', 14, 30);
+      if (r.verified && r.verified_at) {
+        doc.text(`Verified: ${new Date(r.verified_at).toLocaleString()}`, 14, 36);
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Site', 14, 48);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Latitude: ${r.latitude}    Longitude: ${r.longitude}`, 14, 55);
+      doc.text(`Date: ${r.report_date}    Time: ${r.report_time}`, 14, 61);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Reflective Surface', 14, 73);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Tilt: ${r.tilt}°    Surface azimuth: ${r.surface_azimuth}°    Type: ${r.surface_type}`, 14, 80);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Observer', 14, 92);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Bearing: ${r.observer_bearing}°    Elevation: ${r.observer_elevation}°`, 14, 99);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Result', 14, 111);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Sun position — Azimuth: ${Number(r.sun_azimuth ?? 0).toFixed(1)}°  Elevation: ${Number(r.sun_elevation ?? 0).toFixed(1)}°`, 14, 118);
+      doc.text(`Angular separation to observer: ${r.angular_separation !== null ? Number(r.angular_separation).toFixed(2) + '°' : 'n/a'}`, 14, 124);
+      doc.text(`Severity: ${r.severity || 'None'}    Glare detected: ${r.glare_detected ? 'Yes' : 'No'}`, 14, 130);
+      if (r.cloud_cover_pct !== null && r.cloud_cover_pct !== undefined) {
+        doc.text(`Forecast cloud cover: ${r.cloud_cover_pct}%`, 14, 136);
+      }
+
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text('Generated by Glint & Glare Report. Simplified plane-reflection model — not a substitute for', 14, 275);
+      doc.text('a certified glare study where regulation requires one.', 14, 280);
+
+      doc.save(`glint-glare-report-${r.report_date}.pdf`);
+    }
+
+    document.addEventListener('DOMContentLoaded', loadMyReports);
+  </script>
+</body>
+</html>

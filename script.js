@@ -325,7 +325,15 @@ function renderDayScan(windows) {
 async function saveReport(d, sun, glare, cloudCover) {
   if (!window.db) return; // no database configured yet
 
+  // If someone is logged in, tag the report as theirs so it shows up
+  // in their dashboard and can later be marked "official" by an admin.
+  // Logged-out visitors can still save/use the tool as a guest report.
+  let userId = null;
+  const { data: userData } = await window.db.auth.getUser();
+  if (userData?.user) userId = userData.user.id;
+
   const { error } = await window.db.from('reports').insert({
+    user_id: userId,
     latitude: d.latitude,
     longitude: d.longitude,
     report_date: d.date,

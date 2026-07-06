@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Glint &amp; Glare Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="config.js" defer></script>
+  <script src="auth.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <a href="index.html" style="text-decoration:none; display:flex; align-items:center; gap:10px;">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span class="brand-name">Glint &amp; Glare Report</span>
+        </a>
+      </div>
+      <nav class="auth-nav">
+        <a href="login.html" id="navLogin">Log in</a>
+        <a href="signup.html" id="navSignup">Sign up</a>
+        <a href="dashboard.html" id="navDashboard" hidden>My Reports</a>
+        <a href="admin.html" id="navAdmin" hidden>Admin</a>
+        <span id="navEmail" class="nav-email" hidden></span>
+        <button id="navLogout" class="nav-logout" hidden>Log out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <section class="panel" style="margin: 32px 0;">
+      <h2 class="panel-heading"><span class="panel-index">Overview</span></h2>
+      <div id="statsGrid" class="data-grid" style="font-size:1rem;"></div>
+    </section>
+
+    <section class="panel" style="margin-bottom: 32px;">
+      <h2 class="panel-heading"><span class="panel-index">All Reports</span></h2>
+      <p id="reportsStatus" class="db-status">Loading…</p>
+      <div id="allReports" class="saved-list"></div>
+    </section>
+
+    <section class="panel" style="margin-bottom: 32px;">
+      <h2 class="panel-heading"><span class="panel-index">Users</span></h2>
+      <p id="usersStatus" class="db-status">Loading…</p>
+      <div id="allUsers" class="saved-list"></div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Admin panel — visible only to accounts with the admin role.</p>
+    </div>
+  </footer>
+
+  <script>
+    let me = null;
+
+    async function loadAdmin() {
+      me = await requireAdmin();
+      if (!me) return; // redirected if not admin
+
+      await Promise.all([loadStats(), loadAllReports(), loadAllUsers()]);
+    }
+
+    async function loadStats() {
+      const grid = document.getElementById('statsGrid');
+
+      const [{ count: reportCount }, { count: userCount }, { count: verifiedCount }] = await Promise.all([
+        window.db.from('reports').select('*', { count: 'exact', head: true }),
+        window.db.from('profiles').select('*', { count: 'exact', head: true }),
+        window.db.from('reports').select('*', { count: 'exact', head: true }).eq('verified', true),
+      ]);
+
+      grid.innerHTML = `
+        <dt>Total reports</dt><dd>${reportCount ?? '—'}</dd>
+        <dt>Total users</dt><dd>${userCount ?? '—'}</dd>
+        <dt>Verified (official) reports</dt><dd>${verifiedCount ?? '—'}</dd>
+      `;
+    }
+
+    async function loadAllReports() {
+      const status = document.getElementById('reportsStatus');
+      const list = document.getElementById('allReports');
+
+      const { data, error } = await window.db
+        .from('reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        status.textContent = `Couldn't load reports: ${error.message}`;
+        return;
+      }
+
+      status.textContent = `Showing the ${data.length} most recent reports (across all users).`;
+
+      list.innerHTML = data
+        .map((r) => {
+          const owner = r.user_id ? r.user_id.slice(0, 8) + '…' : 'guest';
+          const verifyBtn = r.verified
+            ? `<button class="btn-secondary" style="width:auto; margin:0; padding:8px 14px;" onclick="unverifyReport('${r.id}')">Unverify</button>`
+            : `<button class="btn-primary" style="width:auto; margin:0; padding:8px 14px;" onclick="verifyReport('${r.id}')">Mark official</button>`;
+          return `
+            <div class="saved-item" style="flex-wrap: wrap;">
+              <span class="saved-item-loc">${Number(r.latitude).toFixed(3)}, ${Number(r.longitude).toFixed(3)}</span>
+              <span class="saved-item-date">${r.report_date} ${r.report_time}</span>
+              <span class="saved-item-severity severity-${(r.severity || 'none').toLowerCase()}">${r.severity || 'None'}</span>
+              <span class="saved-item-date">owner: ${owner}</span>
+              ${verifyBtn}
+              <button class="btn-secondary" style="width:auto; margin:0; padding:8px 14px; color:#E0654F;" onclick="deleteReport('${r.id}')">Delete</button>
+            </div>`;
+        })
+        .join('');
+    }
+
+    async function verifyReport(id) {
+      const { error } = await window.db
+        .from('reports')
+        .update({ verified: true, verified_by: me.id, verified_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) { alert(`Failed: ${error.message}`); return; }
+      loadAllReports();
+      loadStats();
+    }
+
+    async function unverifyReport(id) {
+      const { error } = await window.db
+        .from('reports')
+        .update({ verified: false, verified_by: null, verified_at: null })
+        .eq('id', id);
+      if (error) { alert(`Failed: ${error.message}`); return; }
+      loadAllReports();
+      loadStats();
+    }
+
+    async function deleteReport(id) {
+      if (!confirm('Delete this report permanently?')) return;
+      const { error } = await window.db.from('reports').delete().eq('id', id);
+      if (error) { alert(`Failed: ${error.message}`); return; }
+      loadAllReports();
+      loadStats();
+    }
+
+    async function loadAllUsers() {
+      const status = document.getElementById('usersStatus');
+      const list = document.getElementById('allUsers');
+
+      const { data, error } = await window.db
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        status.textContent = `Couldn't load users: ${error.message}`;
+        return;
+      }
+
+      status.textContent = `${data.length} registered user${data.length === 1 ? '' : 's'}.`;
+
+      list.innerHTML = data
+        .map((u) => {
+          const isSelf = u.id === me.id;
+          const toggleBtn = u.role === 'admin'
+            ? `<button class="btn-secondary" style="width:auto; margin:0; padding:8px 14px;" ${isSelf ? 'disabled title="You can\'t demote yourself here"' : ''} onclick="setRole('${u.id}', 'user')">Revoke admin</button>`
+            : `<button class="btn-primary" style="width:auto; margin:0; padding:8px 14px;" onclick="setRole('${u.id}', 'admin')">Make admin</button>`;
+          return `
+            <div class="saved-item">
+              <span class="saved-item-loc">${u.email || '(no email)'}</span>
+              <span class="saved-item-date">${u.full_name || ''}</span>
+              <span class="saved-item-severity" style="color:${u.role === 'admin' ? '#4FA8E0' : '#7C8699'};">${u.role}</span>
+              ${toggleBtn}
+            </div>`;
+        })
+        .join('');
+    }
+
+    async function setRole(userId, role) {
+      const { error } = await window.db.from('profiles').update({ role }).eq('id', userId);
+      if (error) { alert(`Failed: ${error.message}`); return; }
+      loadAllUsers();
+    }
+
+    document.addEventListener('DOMContentLoaded', loadAdmin);
+  </script>
+</body>
+</html>

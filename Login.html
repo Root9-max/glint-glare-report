@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log in — Glint &amp; Glare Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="config.js" defer></script>
+  <script src="auth.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <a href="index.html" style="text-decoration:none; display:flex; align-items:center; gap:10px;">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span class="brand-name">Glint &amp; Glare Report</span>
+        </a>
+      </div>
+      <nav class="auth-nav">
+        <a href="login.html" id="navLogin">Log in</a>
+        <a href="signup.html" id="navSignup">Sign up</a>
+        <a href="dashboard.html" id="navDashboard" hidden>My Reports</a>
+        <a href="admin.html" id="navAdmin" hidden>Admin</a>
+        <span id="navEmail" class="nav-email" hidden></span>
+        <button id="navLogout" class="nav-logout" hidden>Log out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap auth-main">
+    <section class="panel auth-panel">
+      <h2 class="panel-heading"><span class="panel-index">Log in</span></h2>
+
+      <form id="loginForm" class="glare-form" autocomplete="off">
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn-primary">Log in</button>
+        <p id="loginStatus" class="save-status" aria-live="polite"></p>
+      </form>
+
+      <p class="auth-switch">No account yet? <a href="signup.html">Sign up</a></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Built for site assessment. Not a substitute for a certified glare study where regulation requires one.</p>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const status = document.getElementById('loginStatus');
+      if (!window.db) {
+        status.textContent = 'Database not configured yet — see config.js.';
+        return;
+      }
+      status.textContent = 'Logging in…';
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      const { error } = await window.db.auth.signInWithPassword({ email, password });
+      if (error) {
+        status.textContent = `Login failed: ${error.message}`;
+        return;
+      }
+      window.location.href = 'dashboard.html';
+    });
+  </script>
+</body>
+</html>

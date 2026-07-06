@@ -12,6 +12,7 @@
   <!-- Database client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="config.js" defer></script>
+  <script src="auth.js" defer></script>
 </head>
 <body>
 
@@ -21,6 +22,14 @@
         <span class="brand-mark" aria-hidden="true"></span>
         <span class="brand-name">Glint &amp; Glare Report</span>
       </div>
+      <nav class="auth-nav">
+        <a href="login.html" id="navLogin">Log in</a>
+        <a href="signup.html" id="navSignup">Sign up</a>
+        <a href="dashboard.html" id="navDashboard" hidden>My Reports</a>
+        <a href="admin.html" id="navAdmin" hidden>Admin</a>
+        <span id="navEmail" class="nav-email" hidden></span>
+        <button id="navLogout" class="nav-logout" hidden>Log out</button>
+      </nav>
       <p class="tagline">Measure reflected sunlight before it becomes someone else's problem.</p>
     </div>
   </header>
@@ -153,6 +162,7 @@
 
   <section class="wrap saved-section">
     <h2 class="panel-heading"><span class="panel-index">Saved Reports</span></h2>
+    <p class="tagline" style="margin-bottom: 14px;">Log in to save reports to your own account and download an official PDF once an admin verifies it. <a href="login.html" style="color: var(--sky);">Log in</a> or <a href="signup.html" style="color: var(--sky);">sign up</a>.</p>
     <p id="dbStatus" class="db-status">Checking database connection…</p>
     <div id="savedReports" class="saved-list"></div>
   </section>

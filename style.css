@@ -44,6 +44,78 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  position: relative;
+}
+
+.auth-nav {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 0.85rem;
+}
+
+.auth-nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.auth-nav a:hover {
+  color: var(--sky);
+}
+
+.nav-email {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.nav-logout {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.nav-logout:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.auth-main {
+  display: flex;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.auth-panel {
+  width: 100%;
+  max-width: 420px;
+}
+
+.auth-switch {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.auth-switch a {
+  color: var(--sky);
+}
+
+@media (max-width: 640px) {
+  .auth-nav {
+    position: static;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
 }
 
 .brand {
