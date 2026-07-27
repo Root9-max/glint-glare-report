@@ -236,7 +236,66 @@ html, body {
   letter-spacing: 0.08em;
   color: var(--sky);
   padding: 0 0 10px;
+  width: 100%;
 }
+
+.fieldset-toggle {
+  background: none;
+  border: none;
+  color: var(--sky);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.fieldset-toggle .toggle-hint {
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.7rem;
+}
+
+.ocular-fields {
+  margin-top: 12px;
+}
+
+.field-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+.year-plot-container {
+  padding-top: 4px;
+}
+
+.hazard-legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.legend-low { background: #4FA8E0; }
+.legend-moderate { background: #F4A736; }
+.legend-high { background: #E0654F; }
 
 .field {
   position: relative;

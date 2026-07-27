@@ -1,13 +1,36 @@
 // Glint & Glare Report — script.js
-// Real sun-position + reflection-geometry calculations, a full-day
-// glare scan, live weather context, and Supabase persistence.
+// Real sun-position + reflection-geometry calculations, an ocular hazard
+// model informed by Sandia National Laboratories' SGHAT documentation,
+// full-day and full-year glare scans, live weather context, and
+// Supabase persistence.
+//
+// IMPORTANT HONESTY NOTE: the retinal-irradiance formula below is a
+// physically-reasoned approximation built from standard radiometry
+// (conservation of radiance, solid-angle geometry, reflectance scaling).
+// It is informed by Sandia's publicly available SGHAT user manual but is
+// NOT a verified reproduction of Sandia's validated model (that model's
+// exact equations live in a separate peer-reviewed paper: Ho, Ghanbari &
+// Diver, 2011). Treat this tool's hazard output as informational, not as
+// a certified substitute for SGHAT or a professional glare study.
 
 const form = document.getElementById('glareForm');
 const resultsEmpty = document.getElementById('resultsEmpty');
 const resultsContent = document.getElementById('resultsContent');
 const scanDayBtn = document.getElementById('scanDayBtn');
+const scanYearBtn = document.getElementById('scanYearBtn');
 const dbStatus = document.getElementById('dbStatus');
 const savedReportsEl = document.getElementById('savedReports');
+const toggleOcularBtn = document.getElementById('toggleOcular');
+const ocularFields = document.getElementById('ocularFields');
+const yearPlotContainer = document.getElementById('yearPlotContainer');
+const yearPlotSvgWrap = document.getElementById('yearPlotSvgWrap');
+const yearPlotStatus = document.getElementById('yearPlotStatus');
+
+toggleOcularBtn.addEventListener('click', () => {
+  const expanded = toggleOcularBtn.getAttribute('aria-expanded') === 'true';
+  toggleOcularBtn.setAttribute('aria-expanded', String(!expanded));
+  ocularFields.hidden = expanded;
+});
 
 /* ---------------- Vector / angle helpers ---------------- */
 
@@ -66,11 +89,65 @@ function getSunPosition(date, lat, lon) {
   };
 }
 
+/* ---------------- Ocular hazard model ---------------- */
+
+// Average angular size of the sun as seen from Earth (~9.3 mrad / 0.5°),
+// per Sandia's SGHAT documentation.
+const SUN_ANGULAR_SIZE_RAD = 0.0093;
+
+// Approximates the total angular spread ("beam spread") of the reflected
+// glare image by combining the sun's own angular size with additional
+// scatter introduced by the reflecting surface's slope error (roughness).
+// Reflection roughly doubles a surface angle deviation (law of
+// reflection), so rougher surfaces spread the reflected image over a
+// wider angle — this lowers peak intensity but widens the glare window,
+// matching the qualitative behavior described in Sandia's documentation.
+function totalSubtendedAngleRad(slopeErrorMrad) {
+  const slopeErrorRad = slopeErrorMrad / 1000;
+  const scatterComponent = 4 * slopeErrorRad;
+  return Math.sqrt(SUN_ANGULAR_SIZE_RAD ** 2 + scatterComponent ** 2);
+}
+
+// Retinal irradiance from a reflected extended source, derived from
+// standard radiometric relations:
+//   - source radiance L_sun = DNI / solid_angle_of_sun
+//   - reflected radiance is scaled by reflectance and reduced further if
+//     scatter spreads it over a larger solid angle than the sun's own
+//   - retinal irradiance = L * ocular_transmission * (pupil_area / focal_length^2)
+// which simplifies to the formula below. Returns W/m^2 at the retina.
+function retinalIrradiance({ reflectance, peakDni, slopeErrorMrad, pupilDiameterMm, ocularTransmission, eyeFocalLengthMm }) {
+  const totalAngleRad = totalSubtendedAngleRad(slopeErrorMrad);
+  const solidAngleTotal = Math.PI * (totalAngleRad / 2) ** 2; // small-angle approx, steradians
+
+  const pupilDiameterM = pupilDiameterMm / 1000;
+  const pupilAreaM2 = Math.PI * (pupilDiameterM / 2) ** 2;
+  const focalLengthM = eyeFocalLengthMm / 1000;
+
+  const E = (reflectance * peakDni * ocularTransmission * pupilAreaM2) / (focalLengthM ** 2 * solidAngleTotal);
+  return E; // W/m^2
+}
+
+// Hazard bands are set conservatively relative to a known reference
+// point: direct unfiltered sun viewing computes to roughly single-digit
+// W/cm^2 at the retina with this same formula (consistent with published
+// solar-viewing hazard figures), and is well-documented as capable of
+// causing eye injury. These thresholds are indicative, not clinically
+// validated cutoffs — see the disclaimer in the footer.
+function classifyOcularHazard(irradianceWm2) {
+  const wcm2 = irradianceWm2 / 10000; // 1 m^2 = 10,000 cm^2
+  if (wcm2 >= 1) return 'High';
+  if (wcm2 >= 0.01) return 'Moderate';
+  return 'Low';
+}
+
 /* ---------------- Core glare calculation ---------------- */
 
 // Returns null if the sun cannot illuminate the front face of the
 // surface (sun behind the panel/wall) — no reflection is possible.
-function calculateGlare({ sunAz, sunEl, tilt, surfaceAz, observerBearing, observerElevation }) {
+function calculateGlare({
+  sunAz, sunEl, tilt, surfaceAz, observerBearing, observerElevation,
+  reflectance, slopeErrorMrad, peakDni, pupilDiameterMm, ocularTransmission, eyeFocalLengthMm,
+}) {
   if (sunEl <= 0) return null; // sun below horizon
 
   const sunVector = toVector(sunAz, sunEl);
@@ -85,16 +162,23 @@ function calculateGlare({ sunAz, sunEl, tilt, surfaceAz, observerBearing, observ
   const observerVector = toVector(observerBearing, observerElevation);
   const separation = angularSeparation(reflectedVector, observerVector);
 
-  let severity = 'None';
-  if (separation < 1) severity = 'High';
-  else if (separation < 3) severity = 'Moderate';
-  else if (separation < 6) severity = 'Low';
+  const totalAngleDeg = toDeg(totalSubtendedAngleRad(slopeErrorMrad));
+  // Observer is within the spread beam if inside half the total angular width.
+  const glareDetected = separation < totalAngleDeg / 2;
+
+  const eIrradiance = retinalIrradiance({ reflectance, peakDni, slopeErrorMrad, pupilDiameterMm, ocularTransmission, eyeFocalLengthMm });
+  const ocularHazard = classifyOcularHazard(eIrradiance);
+  const severity = glareDetected ? ocularHazard : 'None';
 
   return {
     reflection: reflectedDir,
     separation,
+    totalAngleDeg,
+    retinalIrradianceWm2: eIrradiance,
+    retinalIrradianceWcm2: eIrradiance / 10000,
+    ocularHazard,
     severity,
-    glareDetected: separation < 6,
+    glareDetected,
   };
 }
 
@@ -139,6 +223,12 @@ function readForm() {
     surfaceType: form.surfaceType.value,
     observerBearing: parseFloat(form.observerBearing.value),
     observerElevation: parseFloat(form.observerElevation.value),
+    reflectance: parseFloat(form.reflectance.value) / 100, // stored as %, used as fraction
+    slopeErrorMrad: parseFloat(form.slopeError.value),
+    peakDni: parseFloat(form.peakDni.value),
+    pupilDiameterMm: parseFloat(form.pupilDiameter.value),
+    ocularTransmission: parseFloat(form.ocularTransmission.value),
+    eyeFocalLengthMm: parseFloat(form.eyeFocalLength.value),
   };
 }
 
@@ -152,6 +242,12 @@ function validate(d) {
   if (Number.isNaN(d.observerElevation) || d.observerElevation < -90 || d.observerElevation > 90) errors.push('Observer elevation must be between -90 and 90.');
   if (!d.date) errors.push('Date is required.');
   if (!d.time) errors.push('Time is required.');
+  if (Number.isNaN(d.reflectance) || d.reflectance < 0 || d.reflectance > 1) errors.push('Surface reflectance must be between 0 and 100%.');
+  if (Number.isNaN(d.slopeErrorMrad) || d.slopeErrorMrad < 0) errors.push('Slope error must be 0 or greater.');
+  if (Number.isNaN(d.peakDni) || d.peakDni <= 0) errors.push('Peak DNI must be greater than 0.');
+  if (Number.isNaN(d.pupilDiameterMm) || d.pupilDiameterMm <= 0) errors.push('Pupil diameter must be greater than 0.');
+  if (Number.isNaN(d.ocularTransmission) || d.ocularTransmission <= 0 || d.ocularTransmission > 1) errors.push('Ocular transmission coefficient must be between 0 and 1.');
+  if (Number.isNaN(d.eyeFocalLengthMm) || d.eyeFocalLengthMm <= 0) errors.push('Eye focal length must be greater than 0.');
   return errors;
 }
 
@@ -175,6 +271,12 @@ form.addEventListener('submit', async (event) => {
     surfaceAz: d.surfaceAz,
     observerBearing: d.observerBearing,
     observerElevation: d.observerElevation,
+    reflectance: d.reflectance,
+    slopeErrorMrad: d.slopeErrorMrad,
+    peakDni: d.peakDni,
+    pupilDiameterMm: d.pupilDiameterMm,
+    ocularTransmission: d.ocularTransmission,
+    eyeFocalLengthMm: d.eyeFocalLengthMm,
   });
 
   renderResult(d, sun, glare);
@@ -189,6 +291,7 @@ form.addEventListener('submit', async (event) => {
 function renderResult(d, sun, glare) {
   resultsEmpty.hidden = true;
   resultsContent.hidden = false;
+  yearPlotContainer.hidden = true;
 
   const sunBelowHorizon = sun.elevation <= 0;
 
@@ -202,16 +305,26 @@ function renderResult(d, sun, glare) {
     </div>
 
     <div class="result-block">
-      <h3 class="result-heading">Reflection</h3>
+      <h3 class="result-heading">Reflection &amp; Ocular Hazard</h3>
       ${
         glare
           ? `<dl class="data-grid">
               <dt>Reflected azimuth</dt><dd>${glare.reflection.azimuth.toFixed(1)}°</dd>
               <dt>Reflected elevation</dt><dd>${glare.reflection.elevation.toFixed(1)}°</dd>
               <dt>Angle to observer</dt><dd>${glare.separation.toFixed(2)}°</dd>
+              <dt>Beam spread (total)</dt><dd>${glare.totalAngleDeg.toFixed(2)}°</dd>
+              <dt>Retinal irradiance</dt><dd>${glare.retinalIrradianceWcm2.toFixed(4)} W/cm²</dd>
             </dl>
             <p class="glare-verdict severity-${glare.severity.toLowerCase()}">
-              ${glare.glareDetected ? `Glare likely — severity: ${glare.severity}` : 'No significant glare at this moment'}
+              ${
+                glare.glareDetected
+                  ? glare.severity === 'High'
+                    ? 'Glare present — potential retinal injury risk'
+                    : glare.severity === 'Moderate'
+                    ? 'Glare present — potential temporary after-image (flash blindness)'
+                    : 'Glare present — low hazard'
+                  : 'No significant glare at this moment'
+              }
             </p>`
           : `<p class="glare-verdict severity-none">No reflection reaches the observer direction — sun is below the horizon or behind the surface.</p>`
       }
@@ -259,6 +372,12 @@ scanDayBtn.addEventListener('click', () => {
       surfaceAz: d.surfaceAz,
       observerBearing: d.observerBearing,
       observerElevation: d.observerElevation,
+      reflectance: d.reflectance,
+      slopeErrorMrad: d.slopeErrorMrad,
+      peakDni: d.peakDni,
+      pupilDiameterMm: d.pupilDiameterMm,
+      ocularTransmission: d.ocularTransmission,
+      eyeFocalLengthMm: d.eyeFocalLengthMm,
     });
     points.push({ time: new Date(t), glare });
   }
@@ -296,6 +415,7 @@ function fmtTime(date) {
 function renderDayScan(windows) {
   resultsEmpty.hidden = true;
   resultsContent.hidden = false;
+  yearPlotContainer.hidden = true;
 
   if (!windows.length) {
     resultsContent.innerHTML = `<p class="glare-verdict severity-none">No glare windows found for this geometry across the whole day.</p>`;
@@ -317,6 +437,122 @@ function renderDayScan(windows) {
       <thead><tr><th>Time range</th><th>Peak severity</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
+  `;
+}
+
+/* ---------------- Full-year scan (glare occurrence plot) ---------------- */
+
+scanYearBtn.addEventListener('click', () => {
+  const d = readForm();
+  const errors = validate(d);
+  if (errors.length) {
+    alert(errors.join('\n'));
+    return;
+  }
+
+  const year = parseInt(d.date.slice(0, 4), 10);
+  const stepMinutes = 10; // coarser than day-scan to keep ~365 days fast
+  const points = []; // { dayOfYear, minutesSinceMidnight, severity }
+
+  const jan1 = new Date(year, 0, 1);
+  for (let dayOffset = 0; dayOffset < 365; dayOffset++) {
+    const dayDate = new Date(jan1.getTime() + dayOffset * 86400000);
+    const times = SunCalc.getTimes(dayDate, d.latitude, d.longitude);
+    const start = times.sunrise;
+    const end = times.sunset;
+    if (!start || !end || isNaN(start) || isNaN(end)) continue; // polar day/night
+
+    for (let t = new Date(start); t <= end; t = new Date(t.getTime() + stepMinutes * 60000)) {
+      const sun = getSunPosition(t, d.latitude, d.longitude);
+      const glare = calculateGlare({
+        sunAz: sun.azimuth,
+        sunEl: sun.elevation,
+        tilt: d.tilt,
+        surfaceAz: d.surfaceAz,
+        observerBearing: d.observerBearing,
+        observerElevation: d.observerElevation,
+        reflectance: d.reflectance,
+        slopeErrorMrad: d.slopeErrorMrad,
+        peakDni: d.peakDni,
+        pupilDiameterMm: d.pupilDiameterMm,
+        ocularTransmission: d.ocularTransmission,
+        eyeFocalLengthMm: d.eyeFocalLengthMm,
+      });
+      if (glare && glare.glareDetected) {
+        points.push({
+          dayOfYear: dayOffset,
+          minutesSinceMidnight: t.getHours() * 60 + t.getMinutes(),
+          severity: glare.severity,
+        });
+      }
+    }
+  }
+
+  renderYearPlot(points, year);
+});
+
+function renderYearPlot(points, year) {
+  resultsEmpty.hidden = true;
+  resultsContent.hidden = true;
+  yearPlotContainer.hidden = false;
+
+  if (!points.length) {
+    yearPlotSvgWrap.innerHTML = '';
+    yearPlotStatus.textContent = `No glare found at any point across ${year} for this geometry.`;
+    return;
+  }
+
+  yearPlotStatus.textContent = `${points.length} glare moments found across ${year} (10-minute resolution).`;
+
+  const width = 900;
+  const height = 340;
+  const marginLeft = 50;
+  const marginBottom = 30;
+  const marginTop = 10;
+  const marginRight = 10;
+  const plotW = width - marginLeft - marginRight;
+  const plotH = height - marginTop - marginBottom;
+
+  const colorFor = (sev) => (sev === 'High' ? '#E0654F' : sev === 'Moderate' ? '#F4A736' : '#4FA8E0');
+
+  const dots = points
+    .map((p) => {
+      const x = marginLeft + (p.dayOfYear / 365) * plotW;
+      const y = marginTop + (1 - p.minutesSinceMidnight / 1440) * plotH;
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.6" fill="${colorFor(p.severity)}" opacity="0.85" />`;
+    })
+    .join('');
+
+  // Month gridlines/labels
+  const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthLines = monthLabels
+    .map((label, i) => {
+      const dayFrac = i / 12;
+      const x = marginLeft + dayFrac * plotW;
+      return `
+        <line x1="${x}" y1="${marginTop}" x2="${x}" y2="${marginTop + plotH}" stroke="#232E47" stroke-width="1" />
+        <text x="${x + 4}" y="${height - 10}" fill="#7C8699" font-size="11" font-family="IBM Plex Mono, monospace">${label}</text>
+      `;
+    })
+    .join('');
+
+  // Hour gridlines (every 4 hours)
+  const hourLines = [0, 4, 8, 12, 16, 20, 24]
+    .map((h) => {
+      const y = marginTop + (1 - h / 24) * plotH;
+      return `
+        <line x1="${marginLeft}" y1="${y}" x2="${marginLeft + plotW}" y2="${y}" stroke="#1A2439" stroke-width="1" />
+        <text x="8" y="${y + 4}" fill="#7C8699" font-size="11" font-family="IBM Plex Mono, monospace">${String(h).padStart(2, '0')}:00</text>
+      `;
+    })
+    .join('');
+
+  yearPlotSvgWrap.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%; height:auto; background:#0D1526; border:1px solid #232E47; border-radius:8px;">
+      ${hourLines}
+      ${monthLines}
+      ${dots}
+    </svg>
   `;
 }
 
@@ -351,6 +587,15 @@ async function saveReport(d, sun, glare, cloudCover) {
     glare_detected: glare ? glare.glareDetected : false,
     severity: glare ? glare.severity : 'None',
     cloud_cover_pct: cloudCover,
+    reflectance_pct: d.reflectance * 100,
+    slope_error_mrad: d.slopeErrorMrad,
+    peak_dni: d.peakDni,
+    pupil_diameter_mm: d.pupilDiameterMm,
+    ocular_transmission: d.ocularTransmission,
+    eye_focal_length_mm: d.eyeFocalLengthMm,
+    total_beam_spread_deg: glare ? glare.totalAngleDeg : null,
+    retinal_irradiance_wcm2: glare ? glare.retinalIrradianceWcm2 : null,
+    ocular_hazard: glare ? glare.ocularHazard : null,
   });
 
   if (error) console.error('Supabase insert failed:', error.message);

@@ -23,10 +23,10 @@
         <span class="brand-name">Glint &amp; Glare Report</span>
       </div>
       <nav class="auth-nav">
-        <a href="Login.html" id="navLogin">Log in</a>
-        <a href="Signup.html" id="navSignup">Sign up</a>
-        <a href="Dashboard.html" id="navDashboard" hidden>My Reports</a>
-        <a href="Admin.html" id="navAdmin" hidden>Admin</a>
+        <a href="login.html" id="navLogin">Log in</a>
+        <a href="signup.html" id="navSignup">Sign up</a>
+        <a href="dashboard.html" id="navDashboard" hidden>My Reports</a>
+        <a href="admin.html" id="navAdmin" hidden>Admin</a>
         <span id="navEmail" class="nav-email" hidden></span>
         <button id="navLogout" class="nav-logout" hidden>Log out</button>
       </nav>
@@ -127,11 +127,61 @@
           </div>
         </fieldset>
 
+        <fieldset class="field-group">
+          <legend>
+            <button type="button" id="toggleOcular" class="fieldset-toggle" aria-expanded="false">
+              Optical &amp; Ocular Parameters <span class="toggle-hint">(advanced — defaults are fine)</span>
+            </button>
+          </legend>
+
+          <div id="ocularFields" class="ocular-fields" hidden>
+            <div class="field">
+              <label for="reflectance">Surface reflectance</label>
+              <input type="text" inputmode="decimal" id="reflectance" name="reflectance" value="10">
+              <span class="field-suffix">%</span>
+            </div>
+
+            <div class="field">
+              <label for="slopeError">Slope error (surface scatter)</label>
+              <input type="text" inputmode="decimal" id="slopeError" name="slopeError" value="10">
+              <span class="field-suffix">mrad</span>
+            </div>
+
+            <div class="field">
+              <label for="peakDni">Peak direct normal irradiance (DNI)</label>
+              <input type="text" inputmode="decimal" id="peakDni" name="peakDni" value="1000">
+              <span class="field-suffix">W/m²</span>
+            </div>
+
+            <div class="field">
+              <label for="pupilDiameter">Pupil diameter</label>
+              <input type="text" inputmode="decimal" id="pupilDiameter" name="pupilDiameter" value="2">
+              <span class="field-suffix">mm</span>
+            </div>
+
+            <div class="field">
+              <label for="ocularTransmission">Ocular transmission coefficient</label>
+              <input type="text" inputmode="decimal" id="ocularTransmission" name="ocularTransmission" value="0.5">
+            </div>
+
+            <div class="field">
+              <label for="eyeFocalLength">Eye focal length</label>
+              <input type="text" inputmode="decimal" id="eyeFocalLength" name="eyeFocalLength" value="17">
+              <span class="field-suffix">mm</span>
+            </div>
+
+            <p class="field-note">Defaults are typical published values (based on Sandia National Laboratories' SGHAT documentation) and work for most cases. Only change these if you know the specific module/eye parameters for your site.</p>
+          </div>
+        </fieldset>
+
         <button type="submit" class="btn-primary">
           Generate report
         </button>
         <button type="button" id="scanDayBtn" class="btn-secondary">
           Scan full day for glare windows
+        </button>
+        <button type="button" id="scanYearBtn" class="btn-secondary">
+          Scan full year (glare occurrence plot)
         </button>
       </form>
     </section>
@@ -156,20 +206,31 @@
       <div id="resultsContent" class="results-content" hidden>
         <!-- Populated by script.js -->
       </div>
+
+      <div id="yearPlotContainer" class="year-plot-container" hidden>
+        <h3 class="result-heading">Annual Glare Occurrence</h3>
+        <div class="hazard-legend">
+          <span><i class="legend-dot legend-low"></i> Low</span>
+          <span><i class="legend-dot legend-moderate"></i> Temporary after-image</span>
+          <span><i class="legend-dot legend-high"></i> Potential retinal injury risk</span>
+        </div>
+        <div id="yearPlotSvgWrap"></div>
+        <p id="yearPlotStatus" class="db-status"></p>
+      </div>
     </section>
 
   </main>
 
   <section class="wrap saved-section">
     <h2 class="panel-heading"><span class="panel-index">Saved Reports</span></h2>
-    <p class="tagline" style="margin-bottom: 14px;">Log in to save reports to your own account and download an official PDF once an admin verifies it. <a href="Login.html" style="color: var(--sky);">Log in</a> or <a href="Signup.html" style="color: var(--sky);">sign up</a>.</p>
+    <p class="tagline" style="margin-bottom: 14px;">Log in to save reports to your own account and download an official PDF once an admin verifies it. <a href="login.html" style="color: var(--sky);">Log in</a> or <a href="signup.html" style="color: var(--sky);">sign up</a>.</p>
     <p id="dbStatus" class="db-status">Checking database connection…</p>
     <div id="savedReports" class="saved-list"></div>
   </section>
 
   <footer class="site-footer">
     <div class="wrap">
-      <p>Built for site assessment. Not a substitute for a certified glare study where regulation requires one.</p>
+      <p>This tool models glare geometry and ocular hazard using a physically-reasoned approximation informed by publicly available Sandia National Laboratories SGHAT documentation. It is <strong>not</strong> a certified or validated replacement for Sandia's own SGHAT tool (sandia.gov/glare) or a professional glare study. Do not use this as the sole basis for aviation, air-traffic-control, or other regulatory safety decisions.</p>
     </div>
   </footer>
 
