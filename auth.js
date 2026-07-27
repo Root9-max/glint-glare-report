@@ -73,7 +73,7 @@ async function refreshAuthNav() {
 async function requireLogin() {
   const profile = await refreshAuthNav();
   if (!profile) {
-    window.location.href = 'login.html';
+    window.location.href = 'Login.html';
     return null;
   }
   return profile;

@@ -22,10 +22,10 @@
         </a>
       </div>
       <nav class="auth-nav">
-        <a href="login.html" id="navLogin">Log in</a>
-        <a href="signup.html" id="navSignup">Sign up</a>
-        <a href="dashboard.html" id="navDashboard" hidden>My Reports</a>
-        <a href="admin.html" id="navAdmin" hidden>Admin</a>
+        <a href="Login.html" id="navLogin">Log in</a>
+        <a href="Signup.html" id="navSignup">Sign up</a>
+        <a href="Dashboard.html" id="navDashboard" hidden>My Reports</a>
+        <a href="Admin.html" id="navAdmin" hidden>Admin</a>
         <span id="navEmail" class="nav-email" hidden></span>
         <button id="navLogout" class="nav-logout" hidden>Log out</button>
       </nav>
@@ -53,7 +53,7 @@
         <p id="signupStatus" class="save-status" aria-live="polite"></p>
       </form>
 
-      <p class="auth-switch">Already have an account? <a href="login.html">Log in</a></p>
+      <p class="auth-switch">Already have an account? <a href="Login.html">Log in</a></p>
     </section>
   </main>
 
@@ -90,7 +90,7 @@
       // Depending on your Supabase project's email settings, the user
       // may need to confirm their email before they can log in.
       if (data.session) {
-        window.location.href = 'dashboard.html';
+        window.location.href = 'Dashboard.html';
       } else {
         status.textContent = 'Account created — check your email to confirm before logging in.';
       }
