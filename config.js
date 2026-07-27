@@ -25,5 +25,16 @@ if (
   SUPABASE_URL.startsWith("http") &&
   SUPABASE_ANON.length > 20
 ) {
-  window.db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  window.db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+    auth: {
+      // Use sessionStorage instead of the default localStorage.
+      // This means: staying logged in while you navigate between pages
+      // (index -> dashboard -> admin) still works fine, but the session
+      // is cleared automatically the moment the browser or tab is
+      // closed — nobody stays logged in on a shared/public computer.
+      storage: window.sessionStorage,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  });
 }
