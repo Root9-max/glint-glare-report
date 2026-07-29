@@ -76,6 +76,7 @@
         status.textContent = `Login failed: ${error.message}`;
         return;
       }
+      await claimPendingReports();
       window.location.href = 'Dashboard.html';
     });
   </script>

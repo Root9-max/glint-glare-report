@@ -86,7 +86,7 @@ async function requireLogin() {
 async function requireAdmin() {
   const profile = await refreshAuthNav();
   if (!profile) {
-    window.location.href = 'login.html';
+    window.location.href = 'Login.html';
     return null;
   }
   if (profile.role !== 'admin') {
@@ -94,6 +94,42 @@ async function requireAdmin() {
     return null;
   }
   return profile;
+}
+
+/**
+ * Call right after a successful login or signup. Looks for any guest
+ * reports this browser created before the person had an account, and
+ * securely reassigns them via the claim_report() database function —
+ * which only succeeds if the stored token still matches, so simply
+ * knowing a report's id isn't enough to claim someone else's report.
+ */
+async function claimPendingReports() {
+  if (!window.db) return;
+
+  let pending;
+  try {
+    pending = JSON.parse(localStorage.getItem('pendingReportClaims') || '[]');
+  } catch (e) {
+    pending = [];
+  }
+  if (!pending.length) return;
+
+  const stillUnclaimed = [];
+  for (const { id, token } of pending) {
+    try {
+      const { data: claimed, error } = await window.db.rpc('claim_report', {
+        p_report_id: id,
+        p_token: token,
+      });
+      if (error || !claimed) stillUnclaimed.push({ id, token });
+    } catch (e) {
+      stillUnclaimed.push({ id, token });
+    }
+  }
+
+  // Clear out successfully claimed ones; keep anything that failed
+  // (e.g. a network hiccup) so it isn't silently lost.
+  localStorage.setItem('pendingReportClaims', JSON.stringify(stillUnclaimed));
 }
 
 document.addEventListener('DOMContentLoaded', refreshAuthNav);

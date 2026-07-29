@@ -90,9 +90,10 @@
       // Depending on your Supabase project's email settings, the user
       // may need to confirm their email before they can log in.
       if (data.session) {
+        await claimPendingReports();
         window.location.href = 'Dashboard.html';
       } else {
-        status.textContent = 'Account created — check your email to confirm before logging in.';
+        status.textContent = 'Account created — check your email to confirm before logging in. Your existing reports will be linked to your account automatically once you log in.';
       }
     });
   </script>
